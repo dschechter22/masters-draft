@@ -300,6 +300,87 @@
   }
 
   /* ODDS */
+  .odds-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-bottom: 14px;
+  }
+  .odds-filter-btn {
+    padding: 5px 13px;
+    border-radius: 20px;
+    border: 1px solid var(--green-bright);
+    background: none;
+    color: var(--green-muted);
+    font-size: 11px;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .odds-filter-btn.active {
+    background: var(--green-bright);
+    color: var(--gold);
+    border-color: var(--gold-dim);
+  }
+  .odds-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--cream);
+    border: 3px solid var(--green-bright);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .odds-table thead tr { background: #1e3a1e; }
+  .odds-table thead th {
+    padding: 10px 12px;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    color: var(--gold-dim);
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--gold-dim);
+  }
+  .odds-table thead th.right { text-align: right; }
+  .odds-table tbody tr {
+    border-bottom: 1px solid var(--cream-dark);
+    background: var(--cream);
+    transition: background 0.12s;
+  }
+  .odds-table tbody tr:last-child { border-bottom: none; }
+  .odds-table tbody tr:hover { background: #eee8d0; }
+  .odds-table tbody tr.hidden { display: none; }
+  .odds-table td {
+    padding: 11px 12px;
+    font-size: 14px;
+    color: var(--text-dark);
+    vertical-align: middle;
+  }
+  .odds-table td.right { text-align: right; }
+  .odds-rank { font-size: 13px; color: var(--green-bright); font-weight: bold; }
+  .odds-player-cell { font-weight: bold; font-size: 15px; }
+  .odds-sub { font-size: 11px; color: #666; font-weight: normal; display: block; margin-top: 1px; }
+  .team-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: bold;
+    letter-spacing: 0.1em;
+    border: 1px solid;
+  }
+  .badge-Freed  { background: #1a3a2a; color: #5ecf8a; border-color: #2a6a4a; }
+  .badge-Dan    { background: #1a2a3a; color: #5eaaef; border-color: #2a4a7a; }
+  .badge-Braden { background: #3a1a1a; color: #ef8a5e; border-color: #7a2a2a; }
+  .badge-Beast  { background: #2a1a3a; color: #c07aef; border-color: #5a2a7a; }
+  .badge-Wal    { background: #3a2a1a; color: #efcf5e; border-color: #7a5a2a; }
+  .odds-win-val { font-size: 16px; font-weight: bold; }
+  .odds-win-pos { color: var(--red); }
+  .odds-win-neg { color: #2c5f2e; }
+  .odds-loading { color: var(--green-muted); font-style: italic; font-size: 13px; text-align: center; padding: 20px; }
+  .odds-no-data { color: #999; font-style: italic; font-size: 13px; }
   .odds-team-section { margin-bottom: 16px; }
   .odds-team-header {
     font-size: 13px;
@@ -432,8 +513,9 @@
 
   <!-- ODDS -->
   <div class="page" id="page-betting">
-    <div class="section-title">LIVE ODDS — BY TEAM</div>
-    <div class="note" style="color:#b8a96a; margin-bottom:14px; font-size:12px;">All available markets · DraftKings via The Odds API · Tap team to expand</div>
+    <div class="section-title">LIVE ODDS — WIN PROBABILITY</div>
+    <div class="note" style="color:#b8a96a; margin-bottom:12px; font-size:12px;">DraftKings via The Odds API · Sorted most to least likely</div>
+    <div class="odds-filters" id="odds-filters"></div>
     <div id="odds-container"><div class="odds-loading">Loading odds...</div></div>
   </div>
 
@@ -748,49 +830,100 @@ function closeModalDirect() {
   document.getElementById('player-modal').classList.remove('open');
 }
 
-function renderOdds() {
-  const container = document.getElementById('odds-container');
-  const html = TEAMS.map(team => {
-    const playerRows = team.golfers.map(name => {
-      const last = LAST_NAME_MAP[name];
-      const odds = oddsData[last] || {};
-      const markets = Object.entries(odds);
-      const chipsHtml = markets.length > 0
-        ? markets.map(([key, price]) => {
-            const label = MARKET_LABELS[key] || key.replace(/_/g,' ').toUpperCase();
-            return `<div class="odds-chip">${label}<span>${fmtOdds(price)}</span></div>`;
-          }).join('')
-        : `<div class="odds-chip no-odds">No odds available</div>`;
-      return `
-        <div class="odds-player-row">
-          <div class="odds-player-name">${last.toUpperCase()}</div>
-          <div class="odds-markets">${chipsHtml}</div>
-        </div>`;
-    }).join('');
+// Build golfer -> team lookup
+const GOLFER_TEAM = {};
+TEAMS.forEach(t => t.golfers.forEach(g => { GOLFER_TEAM[g] = t.name; }));
 
-    return `
-      <div class="odds-team-section">
-        <div class="odds-team-header" onclick="toggleOddsTeam('odds-body-${team.name}', 'odds-chev-${team.name}')">
-          <span>TEAM ${team.name.toUpperCase()}</span>
-          <span id="odds-chev-${team.name}">▼</span>
-        </div>
-        <div class="odds-team-body" id="odds-body-${team.name}">${playerRows}</div>
-      </div>`;
-  }).join('');
+let activeOddsFilters = new Set(TEAMS.map(t => t.name)); // all on by default
 
-  container.innerHTML = html;
+function impliedProb(americanOdds) {
+  if (!americanOdds) return -Infinity;
+  if (americanOdds > 0) return 100 / (americanOdds + 100);
+  return Math.abs(americanOdds) / (Math.abs(americanOdds) + 100);
 }
 
-function toggleOddsTeam(bodyId, chevId) {
-  const el = document.getElementById(bodyId);
-  const chevron = document.getElementById(chevId);
-  if (el.style.display === 'none') {
-    el.style.display = 'block';
-    chevron.textContent = '▼';
+function renderOddsFilters() {
+  const container = document.getElementById('odds-filters');
+  container.innerHTML = TEAMS.map(team => `
+    <button
+      class="odds-filter-btn ${activeOddsFilters.has(team.name) ? 'active' : ''}"
+      onclick="toggleOddsFilter('${team.name}')"
+    >${team.name.toUpperCase()}</button>
+  `).join('');
+}
+
+function toggleOddsFilter(teamName) {
+  if (activeOddsFilters.has(teamName)) {
+    activeOddsFilters.delete(teamName);
   } else {
-    el.style.display = 'none';
-    chevron.textContent = '▶';
+    activeOddsFilters.add(teamName);
   }
+  renderOddsFilters();
+  applyOddsFilter();
+}
+
+function applyOddsFilter() {
+  document.querySelectorAll('.odds-player-row').forEach(row => {
+    const team = row.dataset.team;
+    if (activeOddsFilters.has(team)) {
+      row.classList.remove('hidden');
+    } else {
+      row.classList.add('hidden');
+    }
+  });
+  // Re-number visible ranks
+  let rank = 1;
+  document.querySelectorAll('.odds-player-row:not(.hidden) .odds-rank').forEach(el => {
+    el.textContent = rank++;
+  });
+}
+
+function renderOdds() {
+  const container = document.getElementById('odds-container');
+
+  // Build flat list of all golfers with their win odds
+  const rows = ALL_GOLFERS.map(name => {
+    const last = LAST_NAME_MAP[name];
+    const odds = oddsData[last] || {};
+    const winOdds = odds['outrights'] ?? null;
+    const teamName = GOLFER_TEAM[name];
+    return { name, last, teamName, winOdds, prob: impliedProb(winOdds) };
+  });
+
+  // Sort by implied probability descending (best odds first), no-odds at bottom
+  rows.sort((a, b) => b.prob - a.prob);
+
+  const tableRows = rows.map((r, i) => {
+    const winDisplay = r.winOdds !== null
+      ? `<span class="odds-win-val ${r.winOdds > 0 ? 'odds-win-pos' : 'odds-win-neg'}">${fmtOdds(r.winOdds)}</span>`
+      : `<span class="odds-no-data">—</span>`;
+    return `
+      <tr class="odds-player-row" data-team="${r.teamName}">
+        <td class="odds-rank">${i + 1}</td>
+        <td class="odds-player-cell">
+          ${r.last.toUpperCase()}
+          <span class="odds-sub">${r.name}</span>
+        </td>
+        <td><span class="team-badge badge-${r.teamName}">${r.teamName.toUpperCase()}</span></td>
+        <td class="right">${winDisplay}</td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="odds-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>PLAYER</th>
+          <th>TEAM</th>
+          <th class="right">WIN ODDS</th>
+        </tr>
+      </thead>
+      <tbody>${tableRows}</tbody>
+    </table>`;
+
+  renderOddsFilters();
+  applyOddsFilter();
 }
 
 function renderWinnerBonusForm() {
