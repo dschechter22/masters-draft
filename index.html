@@ -423,6 +423,63 @@
   .odds-chip.no-odds { color: var(--green-muted); font-style: italic; }
   .odds-loading { color: var(--green-muted); font-style: italic; font-size: 13px; text-align: center; padding: 20px; }
 
+  /* FIELD */
+  .field-legend {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 12px;
+    font-size: 11px;
+    color: var(--green-muted);
+    letter-spacing: 0.08em;
+  }
+  .field-legend-title { margin-right: 2px; }
+  .field-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--cream);
+    border: 3px solid var(--green-bright);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  .field-table thead tr { background: #1e3a1e; }
+  .field-table thead th {
+    padding: 9px 10px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--gold-dim);
+    text-align: left;
+    font-weight: 600;
+    border-bottom: 2px solid var(--gold-dim);
+  }
+  .field-table thead th.right { text-align: right; }
+  .field-table tbody tr {
+    border-bottom: 1px solid var(--cream-dark);
+    background: var(--cream);
+    transition: background 0.12s;
+  }
+  .field-table tbody tr:hover { background: #eee8d0; }
+  .field-table tbody tr:last-child { border-bottom: none; }
+  .field-table tbody tr.field-drafted { background: #f0f5e8; }
+  .field-table tbody tr.field-drafted:hover { background: #e4eeda; }
+  .field-table tbody tr.field-mc { opacity: 0.55; }
+  .field-table td {
+    padding: 9px 10px;
+    font-size: 13px;
+    color: var(--text-dark);
+    vertical-align: middle;
+  }
+  .field-table td.right { text-align: right; }
+  .field-pos { font-size: 12px; color: #555; font-weight: bold; min-width: 32px; }
+  .field-pos.lead { color: var(--green-bright); }
+  .field-name { font-weight: bold; font-size: 14px; }
+  .field-score { font-size: 15px; font-weight: bold; }
+  .field-today { font-size: 12px; color: #666; }
+  .field-thru { font-size: 11px; color: #888; }
+  .field-badge-cell { width: 54px; }
+
   /* ADMIN */
   .toggle-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
   .toggle-label { font-size: 13px; color: var(--gold-dim); margin-right: 4px; }
@@ -479,6 +536,7 @@
   <button class="tab-btn active" onclick="showTab('leaderboard')">LEADERBOARD</button>
   <button class="tab-btn" onclick="showTab('teams')">TEAMS</button>
   <button class="tab-btn" onclick="showTab('betting')">ODDS</button>
+  <button class="tab-btn" onclick="showTab('field')">FIELD</button>
   <button class="tab-btn" onclick="showTab('admin')">ADMIN</button>
 </div>
 
@@ -534,6 +592,21 @@
     <div id="admin-live-note" class="note" style="margin-bottom:16px;">Using live ESPN scores. Switch to Manual to override individual scores.</div>
     <div class="section-title" style="margin-top:8px;">WINNER BONUS</div>
     <div id="winner-bonus-form"></div>
+  </div>
+
+  <!-- FIELD -->
+  <div class="page" id="page-field">
+    <div class="section-title">FULL FIELD LEADERBOARD</div>
+    <div class="note" style="color:#b8a96a; margin-bottom:12px; font-size:12px;">Live ESPN scores · Color badges = drafted players</div>
+    <div class="field-legend">
+      <span class="field-legend-title">TEAMS:</span>
+      <span class="team-badge badge-Freed">FREED</span>
+      <span class="team-badge badge-Dan">DAN</span>
+      <span class="team-badge badge-Braden">BRADEN</span>
+      <span class="team-badge badge-Beast">BEAST</span>
+      <span class="team-badge badge-Wal">WAL</span>
+    </div>
+    <div id="field-container"><div class="odds-loading">Loading field...</div></div>
   </div>
 </div>
 
@@ -626,18 +699,39 @@ async function fetchScores() {
     const comps = data?.events?.[0]?.competitions?.[0]?.competitors || [];
     comps.forEach(c => {
       const last = c.athlete?.lastName || '';
+      const first = c.athlete?.firstName || '';
       const scoreRaw = c.score || 'E';
       const total = scoreRaw === 'E' ? 0 : parseInt(scoreRaw) || 0;
       const statusDesc = c.status?.type?.description || '';
       const isMC = statusDesc === 'Cut' || c.status?.type?.id === '6';
       const position = c.status?.position?.displayName || '';
+      const thru = c.status?.thru || c.status?.period || '';
       const linescores = c.linescores || [];
       const rounds = linescores.map(r => {
         const v = parseInt(r.value);
         return isNaN(v) ? null : v - 72;
       });
-      parsed[last] = { total, missedCut: isMC, status: statusDesc, position, rounds };
+      // today = most recent incomplete round score, or last round
+      const todayRaw = c.statistics?.find(s => s.name === 'scoreToPar')?.value;
+      const today = todayRaw !== undefined ? (todayRaw === 'E' ? 0 : parseInt(todayRaw) || 0) : null;
+      parsed[last] = { total, missedCut: isMC, status: statusDesc, position, rounds, today, thru, firstName: first, lastName: last };
     });
+
+    // Build full field sorted by position
+    fullField = comps.map(c => {
+      const last = c.athlete?.lastName || '';
+      const first = c.athlete?.firstName || '';
+      const scoreRaw = c.score || 'E';
+      const total = scoreRaw === 'E' ? 0 : parseInt(scoreRaw) || 0;
+      const statusDesc = c.status?.type?.description || '';
+      const isMC = statusDesc === 'Cut' || c.status?.type?.id === '6';
+      const position = c.status?.position?.displayName || '';
+      const thru = c.status?.thru !== undefined ? c.status.thru : '';
+      const todayRaw = c.linescores?.[c.linescores.length - 1]?.value;
+      const todayVal = todayRaw !== undefined ? (parseInt(todayRaw) - 72) : null;
+      const sortPos = isMC ? 9999 : (parseInt(position) || 500);
+      return { lastName: last, firstName: first, total, missedCut: isMC, position, thru: thru !== null ? String(thru) : '', today: todayVal, sortPos };
+    }).sort((a, b) => a.sortPos - b.sortPos || a.total - b.total);
     ALL_GOLFERS.forEach(name => {
       const key = LAST_NAME_MAP[name];
       if (parsed[key]) {
@@ -698,6 +792,7 @@ function renderAll() {
   renderLeaderboard();
   renderTeamGrid();
   renderWinnerBonusForm();
+  renderField();
   if (useManual) renderAdminForm();
 }
 
@@ -993,11 +1088,65 @@ function setScoreMode(mode) {
   renderAll();
 }
 
+// Build last-name -> team lookup for full field
+const LAST_NAME_TEAM = {};
+TEAMS.forEach(t => t.golfers.forEach(g => {
+  LAST_NAME_TEAM[LAST_NAME_MAP[g]] = t.name;
+}));
+
+let fullField = []; // all competitors from ESPN
+
+function renderField() {
+  const container = document.getElementById('field-container');
+  if (!fullField.length) {
+    container.innerHTML = '<div class="odds-loading">No field data yet — refresh to load.</div>';
+    return;
+  }
+
+  const rows = fullField.map(p => {
+    const teamName = LAST_NAME_TEAM[p.lastName] || null;
+    const isDrafted = !!teamName;
+    const isMC = p.missedCut;
+    const scoreDisplay = p.total === 0 ? 'E' : (p.total > 0 ? `+${p.total}` : `${p.total}`);
+    const todayDisplay = p.today === null ? '' : (p.today === 0 ? 'E' : (p.today > 0 ? `+${p.today}` : `${p.today}`));
+    const scoreClass = p.total < 0 ? 'score-red' : (p.total > 0 ? 'score-green' : 'score-even');
+    const badge = isDrafted
+      ? `<span class="team-badge badge-${teamName}">${teamName.toUpperCase()}</span>`
+      : '';
+    const pos = isMC ? 'MC' : (p.position || '—');
+    const posClass = p.position === '1' || p.position === 'T1' ? 'lead' : '';
+    const thru = p.thru ? `<div class="field-thru">${p.thru === 'F' ? 'F' : `Thru ${p.thru}`}</div>` : '';
+
+    return `
+      <tr class="${isDrafted ? 'field-drafted' : ''} ${isMC ? 'field-mc' : ''}">
+        <td class="field-pos ${posClass}">${pos}</td>
+        <td class="field-name">${p.lastName.toUpperCase()}<div style="font-size:10px;color:#666;font-weight:normal;">${p.firstName}</div></td>
+        <td class="field-badge-cell">${badge}</td>
+        <td class="right field-score ${scoreClass}">${scoreDisplay}</td>
+        <td class="right"><div class="field-today ${p.today < 0 ? 'score-red' : (p.today > 0 ? 'score-green' : '')}">${todayDisplay}</div>${thru}</td>
+      </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="field-table">
+      <thead>
+        <tr>
+          <th>POS</th>
+          <th>PLAYER</th>
+          <th></th>
+          <th class="right">TOTAL</th>
+          <th class="right">TODAY</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
 function showTab(tab) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
   document.getElementById('page-' + tab).classList.add('active');
-  const tabs = ['leaderboard','teams','betting','admin'];
+  const tabs = ['leaderboard','teams','betting','field','admin'];
   document.querySelectorAll('.tab-btn')[tabs.indexOf(tab)].classList.add('active');
   if (tab !== 'teams') {
     document.getElementById('teams-list-view').style.display = 'block';
