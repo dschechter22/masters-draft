@@ -698,8 +698,10 @@ async function fetchScores() {
     const parsed = {};
     const comps = data?.events?.[0]?.competitions?.[0]?.competitors || [];
     comps.forEach(c => {
-      const last = c.athlete?.lastName || '';
-      const first = c.athlete?.firstName || '';
+      const athlete = c.athlete || {};
+      const displayName = athlete.displayName || athlete.shortName || '';
+      const last = athlete.lastName || (displayName.includes(' ') ? displayName.split(' ').pop() : displayName) || '';
+      const first = athlete.firstName || (displayName.includes(' ') ? displayName.split(' ').slice(0,-1).join(' ') : '');
       const scoreRaw = c.score || 'E';
       const total = scoreRaw === 'E' ? 0 : parseInt(scoreRaw) || 0;
       const statusDesc = c.status?.type?.description || '';
@@ -711,7 +713,6 @@ async function fetchScores() {
         const v = parseInt(r.value);
         return isNaN(v) ? null : v - 72;
       });
-      // today = most recent incomplete round score, or last round
       const todayRaw = c.statistics?.find(s => s.name === 'scoreToPar')?.value;
       const today = todayRaw !== undefined ? (todayRaw === 'E' ? 0 : parseInt(todayRaw) || 0) : null;
       parsed[last] = { total, missedCut: isMC, status: statusDesc, position, rounds, today, thru, firstName: first, lastName: last };
@@ -719,18 +720,22 @@ async function fetchScores() {
 
     // Build full field sorted by position
     fullField = comps.map(c => {
-      const last = c.athlete?.lastName || '';
-      const first = c.athlete?.firstName || '';
+      const athlete = c.athlete || {};
+      // ESPN may use displayName, shortName, or firstName/lastName
+      const displayName = athlete.displayName || athlete.shortName || '';
+      const firstName = athlete.firstName || (displayName.includes(' ') ? displayName.split(' ').slice(0,-1).join(' ') : '');
+      const last = athlete.lastName || (displayName.includes(' ') ? displayName.split(' ').pop() : displayName) || '';
       const scoreRaw = c.score || 'E';
       const total = scoreRaw === 'E' ? 0 : parseInt(scoreRaw) || 0;
       const statusDesc = c.status?.type?.description || '';
       const isMC = statusDesc === 'Cut' || c.status?.type?.id === '6';
       const position = c.status?.position?.displayName || '';
       const thru = c.status?.thru !== undefined ? c.status.thru : '';
-      const todayRaw = c.linescores?.[c.linescores.length - 1]?.value;
-      const todayVal = todayRaw !== undefined ? (parseInt(todayRaw) - 72) : null;
+      const linescores = c.linescores || [];
+      const lastRound = linescores[linescores.length - 1];
+      const todayVal = lastRound ? (parseInt(lastRound.value) - 72) : null;
       const sortPos = isMC ? 9999 : (parseInt(position) || 500);
-      return { lastName: last, firstName: first, total, missedCut: isMC, position, thru: thru !== null ? String(thru) : '', today: todayVal, sortPos };
+      return { lastName: last, firstName, total, missedCut: isMC, position, thru: thru !== null ? String(thru) : '', today: todayVal, sortPos };
     }).sort((a, b) => a.sortPos - b.sortPos || a.total - b.total);
     ALL_GOLFERS.forEach(name => {
       const key = LAST_NAME_MAP[name];
