@@ -721,7 +721,6 @@ async function fetchScores() {
     // Build full field sorted by position
     fullField = comps.map(c => {
       const athlete = c.athlete || {};
-      // ESPN may use displayName, shortName, or firstName/lastName
       const displayName = athlete.displayName || athlete.shortName || '';
       const firstName = athlete.firstName || (displayName.includes(' ') ? displayName.split(' ').slice(0,-1).join(' ') : '');
       const last = athlete.lastName || (displayName.includes(' ') ? displayName.split(' ').pop() : displayName) || '';
@@ -729,13 +728,23 @@ async function fetchScores() {
       const total = scoreRaw === 'E' ? 0 : parseInt(scoreRaw) || 0;
       const statusDesc = c.status?.type?.description || '';
       const isMC = statusDesc === 'Cut' || c.status?.type?.id === '6';
-      const position = c.status?.position?.displayName || '';
-      const thru = c.status?.thru !== undefined ? c.status.thru : '';
+      // position can be at multiple paths
+      const position = c.status?.position?.displayName
+        || c.status?.position
+        || c.position?.displayName
+        || '';
+      const thru = c.status?.thru !== undefined ? String(c.status.thru) : '';
+      // today: ESPN linescores value is already relative to par (e.g. "-3", "E", "+1")
       const linescores = c.linescores || [];
       const lastRound = linescores[linescores.length - 1];
-      const todayVal = lastRound ? (parseInt(lastRound.value) - 72) : null;
-      const sortPos = isMC ? 9999 : (parseInt(position) || 500);
-      return { lastName: last, firstName, total, missedCut: isMC, position, thru: thru !== null ? String(thru) : '', today: todayVal, sortPos };
+      let todayVal = null;
+      if (lastRound) {
+        const v = lastRound.value;
+        todayVal = v === 'E' || v === 'Even' ? 0 : parseInt(v);
+        if (isNaN(todayVal)) todayVal = null;
+      }
+      const sortPos = isMC ? 9999 : (parseInt(String(position).replace('T','')) || 500);
+      return { lastName: last, firstName, total, missedCut: isMC, position: String(position), thru, today: todayVal, sortPos };
     }).sort((a, b) => a.sortPos - b.sortPos || a.total - b.total);
     ALL_GOLFERS.forEach(name => {
       const key = LAST_NAME_MAP[name];
