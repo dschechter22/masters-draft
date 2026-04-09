@@ -521,6 +521,32 @@
   }
   .admin-mc-label { font-size: 12px; color: #8ab88a; cursor: pointer; display: flex; align-items: center; gap: 4px; }
 
+  .odds-sort-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+  .odds-sort-label { font-size: 11px; color: var(--gold-dim); letter-spacing: 0.1em; }
+  .odds-sort-btn {
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--green-bright);
+    background: none;
+    color: var(--green-muted);
+    font-size: 11px;
+    font-family: 'EB Garamond', Georgia, serif;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .odds-sort-btn.active {
+    background: var(--green-bright);
+    color: var(--gold);
+    border-color: var(--gold-dim);
+  }
+
   .page { display: none; }
   .page.active { display: block; }
 </style>
@@ -572,7 +598,12 @@
   <!-- ODDS -->
   <div class="page" id="page-betting">
     <div class="section-title">LIVE ODDS — WIN PROBABILITY</div>
-    <div class="note" style="color:#b8a96a; margin-bottom:12px; font-size:12px;">DraftKings via The Odds API · Sorted most to least likely</div>
+    <div class="note" style="color:#b8a96a; margin-bottom:12px; font-size:12px;">DraftKings via The Odds API</div>
+    <div class="odds-sort-row">
+      <span class="odds-sort-label">SORT:</span>
+      <button class="odds-sort-btn active" id="sort-btn-rank" onclick="setOddsSort('rank')">LEADERBOARD</button>
+      <button class="odds-sort-btn" id="sort-btn-odds" onclick="setOddsSort('odds')">WIN ODDS</button>
+    </div>
     <div class="odds-filters" id="odds-filters"></div>
     <div id="odds-container"><div class="odds-loading">Loading odds...</div></div>
   </div>
@@ -962,11 +993,25 @@ const GOLFER_TEAM = {};
 TEAMS.forEach(t => t.golfers.forEach(g => { GOLFER_TEAM[g] = t.name; }));
 
 let activeOddsFilters = new Set(TEAMS.map(t => t.name)); // all on by default
+let oddsSort = 'rank'; // 'rank' or 'odds'
 
 function impliedProb(americanOdds) {
   if (!americanOdds) return -Infinity;
   if (americanOdds > 0) return 100 / (americanOdds + 100);
   return Math.abs(americanOdds) / (Math.abs(americanOdds) + 100);
+}
+
+function setOddsSort(mode) {
+  oddsSort = mode;
+  document.getElementById('sort-btn-rank').className = 'odds-sort-btn' + (mode === 'rank' ? ' active' : '');
+  document.getElementById('sort-btn-odds').className = 'odds-sort-btn' + (mode === 'odds' ? ' active' : '');
+  renderOdds();
+}
+
+function getFieldRank(lastName) {
+  if (!fullField.length) return 9999;
+  const idx = fullField.findIndex(p => p.lastName === lastName);
+  return idx === -1 ? 9999 : idx;
 }
 
 function renderOddsFilters() {
@@ -1008,22 +1053,38 @@ function applyOddsFilter() {
 function renderOdds() {
   const container = document.getElementById('odds-container');
 
-  // Build flat list of all golfers with their win odds
+  // Build flat list of all golfers with their win odds and field rank
   const rows = ALL_GOLFERS.map(name => {
     const last = LAST_NAME_MAP[name];
     const odds = oddsData[last] || {};
     const winOdds = odds['outrights'] ?? null;
     const teamName = GOLFER_TEAM[name];
-    return { name, last, teamName, winOdds, prob: impliedProb(winOdds) };
+    const fieldIdx = getFieldRank(last);
+    const fieldPlayer = fullField[fieldIdx];
+    const fieldPos = fieldPlayer ? fieldPlayer.position : '—';
+    const fieldTotal = fieldPlayer ? fieldPlayer.total : null;
+    return { name, last, teamName, winOdds, prob: impliedProb(winOdds), fieldIdx, fieldPos, fieldTotal };
   });
 
-  // Sort by implied probability descending (best odds first), no-odds at bottom
-  rows.sort((a, b) => b.prob - a.prob);
+  // Sort by selected mode
+  if (oddsSort === 'odds') {
+    rows.sort((a, b) => b.prob - a.prob);
+  } else {
+    // leaderboard: sort by field position, unranked last, then by odds within same score
+    rows.sort((a, b) => {
+      if (a.fieldIdx === 9999 && b.fieldIdx === 9999) return b.prob - a.prob;
+      if (a.fieldIdx === 9999) return 1;
+      if (b.fieldIdx === 9999) return -1;
+      return a.fieldIdx - b.fieldIdx;
+    });
+  }
 
   const tableRows = rows.map((r, i) => {
     const winDisplay = r.winOdds !== null
       ? `<span class="odds-win-val ${r.winOdds > 0 ? 'odds-win-pos' : 'odds-win-neg'}">${fmtOdds(r.winOdds)}</span>`
       : `<span class="odds-no-data">—</span>`;
+    const posDisplay = r.fieldPos && r.fieldPos !== '' ? r.fieldPos : '—';
+    const totalDisplay = r.fieldTotal !== null ? `<span class="${scoreClass(r.fieldTotal)}" style="font-size:11px;margin-left:4px;">${fmt(r.fieldTotal)}</span>` : '';
     return `
       <tr class="odds-player-row" data-team="${r.teamName}">
         <td class="odds-rank">${i + 1}</td>
@@ -1032,6 +1093,7 @@ function renderOdds() {
           <span class="odds-sub">${r.name}</span>
         </td>
         <td><span class="team-badge badge-${r.teamName}">${r.teamName.toUpperCase()}</span></td>
+        <td style="text-align:center;font-size:13px;font-weight:bold;color:#555;">${posDisplay}${totalDisplay}</td>
         <td class="right">${winDisplay}</td>
       </tr>`;
   }).join('');
@@ -1043,6 +1105,7 @@ function renderOdds() {
           <th>#</th>
           <th>PLAYER</th>
           <th>TEAM</th>
+          <th style="text-align:center;">POS</th>
           <th class="right">WIN ODDS</th>
         </tr>
       </thead>
