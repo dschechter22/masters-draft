@@ -728,24 +728,42 @@ async function fetchScores() {
       const total = scoreRaw === 'E' ? 0 : parseInt(scoreRaw) || 0;
       const statusDesc = c.status?.type?.description || '';
       const isMC = statusDesc === 'Cut' || c.status?.type?.id === '6';
-      // position can be at multiple paths
-      const position = c.status?.position?.displayName
-        || c.status?.position
-        || c.position?.displayName
-        || '';
+      // position: ESPN puts it in statistics or at top level
+      const stats = c.statistics?.categories?.[0]?.stats || [];
+      const posObj = stats.find(s => s.displayValue && /^\d/.test(s.displayValue) && s.name === 'position') || null;
+      // fallback: derive from sort order after
+      const position = c.position?.displayName || c.sortOrder || '';
       const thru = c.status?.thru !== undefined ? String(c.status.thru) : '';
-      // today: ESPN linescores value is already relative to par (e.g. "-3", "E", "+1")
+      // linescores: use displayValue which is already relative to par ("E", "-2", "+1")
       const linescores = c.linescores || [];
       const lastRound = linescores[linescores.length - 1];
       let todayVal = null;
       if (lastRound) {
-        const v = lastRound.value;
-        todayVal = v === 'E' || v === 'Even' ? 0 : parseInt(v);
+        const dv = lastRound.displayValue;
+        todayVal = (dv === 'E' || dv === 'Even') ? 0 : parseInt(dv);
         if (isNaN(todayVal)) todayVal = null;
       }
-      const sortPos = isMC ? 9999 : (parseInt(String(position).replace('T','')) || 500);
-      return { lastName: last, firstName, total, missedCut: isMC, position: String(position), thru, today: todayVal, sortPos };
+      const sortOrder = parseInt(c.sortOrder) || 500;
+      const sortPos = isMC ? 9999 : sortOrder;
+      return { lastName: last, firstName, total, missedCut: isMC, position: String(position), thru, today: todayVal, sortPos, sortOrder };
     }).sort((a, b) => a.sortPos - b.sortPos || a.total - b.total);
+
+    // Assign positions based on sorted order (handle ties)
+    let rank = 1;
+    for (let i = 0; i < fullField.length; i++) {
+      if (fullField[i].missedCut) { fullField[i].position = 'MC'; continue; }
+      if (i > 0 && fullField[i].total === fullField[i-1].total && !fullField[i-1].missedCut) {
+        fullField[i].position = fullField[i-1].position;
+      } else {
+        fullField[i].position = i === 0 ? '1' : (fullField[i].total === fullField[i-1].total ? fullField[i-1].position : `${rank}`);
+        // mark tie
+        if (i > 0 && fullField[i].total === fullField[i-1].total) {
+          fullField[i-1].position = `T${rank-1}`;
+          fullField[i].position = `T${rank-1}`;
+        }
+      }
+      rank = i + 2;
+    }
     ALL_GOLFERS.forEach(name => {
       const key = LAST_NAME_MAP[name];
       if (parsed[key]) {
