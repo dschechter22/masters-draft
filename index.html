@@ -138,9 +138,8 @@
   .col-score { width: 110px; text-align: right; }
 
   .board-row {
-    display: flex;
-    align-items: center;
-    padding: 14px 16px;
+    display: block;
+    padding: 0;
     border-bottom: 1px solid var(--cream-dark);
     cursor: pointer;
     background: var(--cream);
@@ -152,10 +151,42 @@
     background: #fffbe6;
     border-left: 4px solid var(--gold);
   }
+  .board-row-main {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px 6px;
+  }
   .board-pos { width: 36px; font-size: 18px; font-weight: bold; color: var(--green-bright); }
   .board-name { flex: 1; font-size: 20px; font-weight: bold; color: var(--text-dark); letter-spacing: 0.05em; }
   .board-score { width: 110px; text-align: right; font-size: 22px; font-weight: bold; }
   .bonus-tag { font-size: 10px; color: var(--gold-dim); letter-spacing: 0.05em; display: block; }
+
+  .player-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    padding: 0 16px 10px 52px;
+  }
+  .player-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    background: #e8e0c8;
+    border: 1px solid var(--cream-dark);
+    border-radius: 20px;
+    padding: 3px 9px;
+    font-size: 11px;
+  }
+  .player-chip.dropped {
+    opacity: 0.45;
+    background: #ddd8c4;
+  }
+  .player-chip.mc {
+    border-color: #c8b090;
+  }
+  .chip-name { font-weight: bold; color: var(--text-dark); letter-spacing: 0.03em; }
+  .chip-score { font-weight: bold; font-size: 12px; }
+  .chip-mc { font-size: 9px; color: #a05020; letter-spacing: 0.05em; margin-left: 1px; }
 
   .score-red { color: var(--red); }
   .score-green { color: #2c5f2e; }
@@ -865,14 +896,49 @@ function renderLeaderboard() {
   container.innerHTML = standings.map((team, i) => {
     const hasBonus = winnerTeams[team.name];
     const display = hasBonus ? team.score - 8 : team.score;
+    const scores = getScores();
+
+    // Build player chips sorted best to worst, mark dropped (worst score)
+    const golferScores = team.golfers.map(g => {
+      const s = scores[g] || { total: 0, missedCut: false };
+      const effective = s.missedCut ? s.total + 16 : s.total;
+      return { name: LAST_NAME_MAP[g], total: s.total, missedCut: s.missedCut, effective };
+    }).sort((a, b) => a.effective - b.effective);
+
+    const droppedEffective = golferScores[5].effective;
+    // if multiple tied for worst, only drop one
+    let droppedCount = 0;
+    const chips = golferScores.map(g => {
+      const isDropped = g.effective === droppedEffective && droppedCount === 0 ? (droppedCount++, true) : false;
+      // re-check: mark the last one as dropped
+      return { ...g, isDropped: false };
+    });
+    // simpler: last item is dropped
+    chips[5].isDropped = true;
+
+    const chipsHtml = chips.map(g => {
+      const scoreDisplay = g.missedCut ? 'MC' : fmt(g.total);
+      const scoreCol = g.missedCut ? '#a05020' : (g.total < 0 ? 'var(--red)' : (g.total > 0 ? '#2c5f2e' : '#666'));
+      return `
+        <div class="player-chip ${g.isDropped ? 'dropped' : ''} ${g.missedCut ? 'mc' : ''}">
+          <span class="chip-name">${g.name.toUpperCase()}</span>
+          <span class="chip-score" style="color:${scoreCol}">${scoreDisplay}</span>
+          ${g.isDropped ? '<span class="chip-mc">DROP</span>' : ''}
+          ${g.missedCut && !g.isDropped ? '<span class="chip-mc">MC</span>' : ''}
+        </div>`;
+    }).join('');
+
     return `
       <div class="board-row ${hasBonus ? 'winner' : ''}" onclick="openTeam('${team.name}')">
-        <span class="board-pos">${i+1}</span>
-        <span class="board-name">${hasBonus ? '🏆 ' : ''}${team.name.toUpperCase()}</span>
-        <span class="board-score ${scoreClass(display)}">
-          ${fmt(display)}
-          ${hasBonus ? '<span class="bonus-tag">(−8 bonus)</span>' : ''}
-        </span>
+        <div class="board-row-main">
+          <span class="board-pos">${i+1}</span>
+          <span class="board-name">${hasBonus ? '🏆 ' : ''}${team.name.toUpperCase()}</span>
+          <span class="board-score ${scoreClass(display)}">
+            ${fmt(display)}
+            ${hasBonus ? '<span class="bonus-tag">(−8 bonus)</span>' : ''}
+          </span>
+        </div>
+        <div class="player-chips">${chipsHtml}</div>
       </div>`;
   }).join('');
 }
