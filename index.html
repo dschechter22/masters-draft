@@ -701,8 +701,8 @@ const TEAMS = [
 ];
 
 const LAST_NAME_MAP = {
-  "Scottie Scheffler":"Scheffler","Collin Morikawa":"Morikawa","Si Woo Kim":"Kim",
-  "Min Woo Lee":"Lee","Jordan Spieth":"Spieth","J.J. Spaun":"Spaun",
+  "Scottie Scheffler":"Scheffler","Collin Morikawa":"Morikawa","Si Woo Kim":"Si Woo Kim",
+  "Min Woo Lee":"Min Woo Lee","Jordan Spieth":"Spieth","J.J. Spaun":"Spaun",
   "Rory McIlroy":"McIlroy","Cameron Young":"Young","Viktor Hovland":"Hovland",
   "Russell Henley":"Henley","Jake Knapp":"Knapp","Sepp Straka":"Straka",
   "Jon Rahm":"Rahm","Tommy Fleetwood":"Fleetwood","Robert MacIntyre":"MacIntyre",
@@ -713,7 +713,21 @@ const LAST_NAME_MAP = {
   "Akshay Bhatia":"Bhatia","Corey Conners":"Conners","Kurt Kitayama":"Kitayama",
 };
 
+const ESPN_DISPLAY_MAP = {
+  "Si Woo Kim": "Si Woo Kim",
+  "Min Woo Lee": "Min Woo Lee",
+};
+const ESPN_LOOKUP_KEY = {
+  "Si Woo Kim": "Si Woo Kim",
+  "Min Woo Lee": "Min Woo Lee",
+};
+
 const ALL_GOLFERS = TEAMS.flatMap(t => t.golfers);
+
+// For all others, lookup key is just the last name from LAST_NAME_MAP
+ALL_GOLFERS.forEach(name => {
+  if (!ESPN_LOOKUP_KEY[name]) ESPN_LOOKUP_KEY[name] = LAST_NAME_MAP[name];
+});
 
 let liveScores = {};
 let manualScores = {};
@@ -778,6 +792,7 @@ async function fetchScores() {
       const todayRaw = c.statistics?.find(s => s.name === 'scoreToPar')?.value;
       const today = todayRaw !== undefined ? (todayRaw === 'E' ? 0 : parseInt(todayRaw) || 0) : null;
       parsed[last] = { total, missedCut: isMC, status: statusDesc, position, rounds, today, thru, firstName: first, lastName: last };
+      if (displayName) parsed[displayName] = parsed[last];
     });
 
     // Build full field sorted by position
@@ -827,7 +842,7 @@ async function fetchScores() {
       rank = i + 2;
     }
     ALL_GOLFERS.forEach(name => {
-      const key = LAST_NAME_MAP[name];
+      const key = ESPN_LOOKUP_KEY[name];
       if (parsed[key]) {
         liveScores[name] = parsed[key];
       } else if (!liveScores[name]) {
